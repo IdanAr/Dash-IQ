@@ -1,8 +1,14 @@
-// Inspired by react-hot-toast library
-import { useState, useEffect, createContext, useContext } from "react";
+import * as React from "react";
 
-const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 1000000;
+// הגדרת זמן תצוגה - 6 שניות (זמן ארוך יותר)
+const TOAST_REMOVE_DELAY = 6000;
+const TOAST_LIMIT = 5;
+
+// משתנה גלובלי למעקב אחר מופעים של Toast וכן מעקב אחר בקשות אחרונות כדי למנוע כפילויות
+if (typeof window !== 'undefined' && !window._toastInstances) {
+  window._toastInstances = 0;
+  window._lastToastMap = new Map(); // מעקב אחר הודעות אחרונות
+}
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -29,19 +35,11 @@ const addToRemoveQueue = (toastId) => {
     toastTimeouts.delete(toastId);
     dispatch({
       type: actionTypes.REMOVE_TOAST,
-      toastId,
+      toastId: toastId,
     });
   }, TOAST_REMOVE_DELAY);
 
   toastTimeouts.set(toastId, timeout);
-};
-
-const clearFromRemoveQueue = (toastId) => {
-  const timeout = toastTimeouts.get(toastId);
-  if (timeout) {
-    clearTimeout(timeout);
-    toastTimeouts.delete(toastId);
-  }
 };
 
 export const reducer = (state, action) => {
@@ -63,8 +61,6 @@ export const reducer = (state, action) => {
     case actionTypes.DISMISS_TOAST: {
       const { toastId } = action;
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId);
       } else {
@@ -85,6 +81,7 @@ export const reducer = (state, action) => {
         ),
       };
     }
+
     case actionTypes.REMOVE_TOAST:
       if (action.toastId === undefined) {
         return {
@@ -110,7 +107,31 @@ function dispatch(action) {
   });
 }
 
-function toast({ ...props }) {
+// פונקציה לבדיקה האם קיימת כבר הודעה דומה במערכת
+const isDuplicateToast = (title, description) => {
+  if (typeof window === 'undefined' || !window._lastToastMap) return false;
+  
+  const key = `${title}|${description}`;
+  const now = Date.now();
+  const lastTime = window._lastToastMap.get(key);
+  
+  // אם יש הודעה דומה שנשלחה בפחות מ-3 שניות, זוהי כפילות
+  if (lastTime && now - lastTime < 3000) {
+    return true;
+  }
+  
+  // שמירת זמן ההודעה הנוכחית
+  window._lastToastMap.set(key, now);
+  return false;
+};
+
+export function toast({ ...props }) {
+  // בדיקה האם כבר יש מופע של toast עם אותה כותרת ותיאור פעיל
+  // כדי למנוע כפילויות
+  if (isDuplicateToast(props.title, props.description)) {
+    return { id: null, dismiss: () => {}, update: () => {} };
+  }
+
   const id = genId();
 
   const update = (props) =>
@@ -118,9 +139,7 @@ function toast({ ...props }) {
       type: actionTypes.UPDATE_TOAST,
       toast: { ...props, id },
     });
-
-  const dismiss = () =>
-    dispatch({ type: actionTypes.DISMISS_TOAST, toastId: id });
+  const dismiss = () => dispatch({ type: actionTypes.DISMISS_TOAST, toastId: id });
 
   dispatch({
     type: actionTypes.ADD_TOAST,
@@ -130,21 +149,37 @@ function toast({ ...props }) {
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss();
+        if (props.onOpenChange) props.onOpenChange(open);
       },
     },
   });
 
   return {
-    id,
+    id: id,
     dismiss,
     update,
   };
 }
 
 function useToast() {
-  const [state, setState] = useState(memoryState);
+  const [state, setState] = React.useState(memoryState);
 
-  useEffect(() => {
+  React.useEffect(() => {
+    // בדיקה למניעת כפילויות של רכיבי Toaster
+    if (typeof window !== 'undefined') {
+      window._toastInstances++;
+      
+      if (window._toastInstances > 1) {
+        console.warn('Multiple Toaster instances detected. This may cause duplicate toast notifications.');
+      }
+      
+      return () => {
+        window._toastInstances--;
+      };
+    }
+  }, []);
+
+  React.useEffect(() => {
     listeners.push(setState);
     return () => {
       const index = listeners.indexOf(setState);
@@ -161,4 +196,4 @@ function useToast() {
   };
 }
 
-export { useToast, toast }; 
+export { useToast as default };
