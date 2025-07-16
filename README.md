@@ -1,8 +1,11 @@
 # Base44 App
 
+> ⚠️ This project is intended for demonstration purposes only.  
+> 📄 Code reuse, forking, or redistribution is **not permitted**.
 
+Recruiters: feel free to explore the code. Please reach out if you'd like to learn more.
 This app was created automatically by Base44.
-Initiated, modified and build by Idan Arbel.
+> Initiated, modified and build by *Idan Arbel*.
 It's a Vite+React app that communicates with the Base44 API.
 
 ## Running the app
